@@ -6,7 +6,7 @@ on:
       gitlab_host:
         description: "GitLab 实例地址"
         type: string
-        required: true
+        default: "https://gitlab.realwxyy.com"
       gitlab_repo:
         description: "GitLab 上的 group/repo（不含 .git）"
         type: string
@@ -43,8 +43,9 @@ jobs:
       - name: Mirror to GitLab
         if: steps.gitlab_up.outputs.reachable == 'true'
         run: |
-          GITLAB_TOKEN_CLEAN=$(echo "$GITLAB_TOKEN" | tr -d '\n\r' | xargs)
-          git remote add gitlab "https://oauth2:${GITLAB_TOKEN_CLEAN}@${GITLAB_HOST#https://}/${GITLAB_REPO}.git"
+          TOKEN_CLEAN=$(printf '%s' "$GITLAB_TOKEN" | tr -d '\n\r ' )
+          GITLAB_DOMAIN="${GITLAB_HOST#https://}"
+          git remote add gitlab "https://oauth2:${TOKEN_CLEAN}@${GITLAB_DOMAIN}/${GITLAB_REPO}.git"
 
           # 获取 GitLab 上现有的分支列表
           git ls-remote --heads gitlab | cut -f2 | sed 's|refs/heads/||' > /tmp/gitlab_branches.txt
