@@ -1,0 +1,69 @@
+name: Sync GitHub → GitLab (via HTTPS)
+
+on:
+  workflow_call:
+    inputs:
+      gitlab_host:
+        description: "GitLab 实例地址"
+        type: string
+        required: true
+      gitlab_repo:
+        description: "GitLab 上的 group/repo（不含 .git）"
+        type: string
+        required: true
+    secrets:
+      GITLAB_TOKEN:
+        description: "GitLab OAuth2 Token"
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check GitLab is reachable
+        id: gitlab_up
+        run: |
+          set -euo pipefail
+          HEALTH_URL="${GITLAB_HOST%/}/-/health"
+          if curl -fsS --connect-timeout 10 --max-time 20 "$HEALTH_URL" >/dev/null 2>&1; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            echo "GitLab responded at $HEALTH_URL — proceeding with sync."
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=GitLab offline::${GITLAB_HOST} did not respond — sync skipped (workflow succeeds)."
+          fi
+        env:
+          GITLAB_HOST: ${{ inputs.gitlab_host }}
+
+      - name: Mirror to GitLab
+        if: steps.gitlab_up.outputs.reachable == 'true'
+        run: |
+          GITLAB_TOKEN_CLEAN=$(echo "$GITLAB_TOKEN" | tr -d '\n\r' | xargs)
+          git remote add gitlab "https://oauth2:${GITLAB_TOKEN_CLEAN}@${GITLAB_HOST#https://}/${GITLAB_REPO}.git"
+
+          # 获取 GitLab 上现有的分支列表
+          git ls-remote --heads gitlab | cut -f2 | sed 's|refs/heads/||' > /tmp/gitlab_branches.txt
+          # 获取 GitHub 本地分支列表
+          git branch -r | grep -v '\->' | sed 's|origin/||' > /tmp/github_branches.txt
+
+          # 删除 GitLab 上存在但 GitHub 本地不存在的分支
+          comm -23 /tmp/gitlab_branches.txt /tmp/github_branches.txt | while read branch; do
+            git push gitlab --delete "$branch" || true
+          done
+
+          # 推送所有分支和标签
+          git push --force --all gitlab
+          git push --force --tags gitlab
+        env:
+          GITLAB_HOST: ${{ inputs.gitlab_host }}
+          GITLAB_REPO: ${{ inputs.gitlab_repo }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Sync skipped (GitLab offline)
+        if: steps.gitlab_up.outputs.reachable != 'true'
+        run: echo "No changes pushed — GitLab was unreachable."
