@@ -1,0 +1,38 @@
+name: CalVer Tag Generator
+description: 生成 CalVer (YYYY.MM.DD.N) 标签和对应 semver
+
+inputs:
+  timezone:
+    description: "时区（如 Asia/Shanghai）"
+    required: true
+
+outputs:
+  tag:
+    description: "CalVer 标签，如 2026.05.26.0"
+    value: ${{ steps.gen.outputs.tag }}
+  semver:
+    description: "对应 semver，如 2026.5.26-0"
+    value: ${{ steps.gen.outputs.semver }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate CalVer tag
+      id: gen
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --tags
+        TODAY=$(TZ="$TIMEZONE" date +'%Y.%m.%d')
+        NUM=$(git tag -l "${TODAY}.*" | sed -n "s/^${TODAY}\.\([0-9]\+\)$/\1/p" | sort -n | tail -n1)
+        NEXT=${NUM:-0}
+        while git rev-parse "${TODAY}.${NEXT}" >/dev/null 2>&1; do
+          NEXT=$((NEXT + 1))
+        done
+        TAG="${TODAY}.${NEXT}"
+        SEMVER=$(node -e 'const [y,m,d,n]="'$TAG'".split("."); console.log(`${parseInt(y)}.${parseInt(m)}.${parseInt(d)}-${parseInt(n)}`)')
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+        echo "✅ $TAG  →  semver $SEMVER"
+      env:
+        TIMEZONE: ${{ inputs.timezone }}

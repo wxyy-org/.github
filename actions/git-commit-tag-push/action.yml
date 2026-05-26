@@ -1,0 +1,25 @@
+name: Git Commit, Tag and Push
+description: 提交 package.json 变更、打 tag 并推送
+
+inputs:
+  tag:
+    description: "要创建的 tag"
+    required: true
+  commit_message:
+    description: "提交信息"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Commit, tag and push
+      shell: bash
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add package.json
+        git commit -m "${{ inputs.commit_message }}"
+        git tag "${{ inputs.tag }}"
+        git push origin "${{ inputs.tag }}"
+        git push

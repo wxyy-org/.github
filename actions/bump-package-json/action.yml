@@ -1,0 +1,22 @@
+name: Bump package.json
+description: 更新 package.json 中的 version、repository 和 homepage
+
+inputs:
+  version:
+    description: "要写入的版本号（semver）"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Bump package.json
+      shell: bash
+      run: |
+        set -euo pipefail
+        node -e "
+          const fs=require('fs'), p=JSON.parse(fs.readFileSync('package.json'));
+          p.version='${{ inputs.version }}';
+          p.repository={type:'git',url:'git+https://github.com/${{ github.repository }}.git'};
+          p.homepage='https://github.com/${{ github.repository }}';
+          fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');
+        "

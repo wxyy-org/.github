@@ -1,0 +1,93 @@
+name: Tag and Release
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: "Node.js 版本"
+        type: string
+        required: true
+      pnpm_version:
+        description: "pnpm 版本"
+        type: string
+        required: true
+      build_command:
+        description: "构建命令"
+        type: string
+        required: true
+      timezone:
+        description: "CalVer 时区"
+        type: string
+        required: true
+      readme_source:
+        description: "README 源文件路径（相对于 workspace）"
+        type: string
+        required: true
+      release_repo_url:
+        description: "发布仓库的 clone URL（不含 token）"
+        type: string
+        required: true
+    secrets:
+      RELEASES_REPO_TOKEN:
+        description: "发布用的 token"
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate CalVer tag
+        id: ver
+        uses: wxyy-org/.github/actions/calver-tag@main
+        with:
+          timezone: ${{ inputs.timezone }}
+
+      - name: Setup Node and pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          registry-url: 'https://npm.pkg.github.com'
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: ${{ inputs.pnpm_version }}
+
+      - name: Bump package.json
+        uses: wxyy-org/.github/actions/bump-package-json@main
+        with:
+          version: ${{ steps.ver.outputs.semver }}
+
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Build
+        shell: bash
+        run: ${{ inputs.build_command }}
+
+      - name: Publish to GPR
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: pnpm publish --no-git-checks
+
+      - name: Push version bump and tag
+        uses: wxyy-org/.github/actions/git-commit-tag-push@main
+        with:
+          tag: ${{ steps.ver.outputs.tag }}
+          commit_message: ":green_heart: chore: bump version to ${{ steps.ver.outputs.tag }}"
+
+      - name: Sync README to release repo
+        uses: wxyy-org/.github/actions/sync-readme@main
+        with:
+          readme_source: ${{ inputs.readme_source }}
+          release_repo_url: ${{ inputs.release_repo_url }}
+          tag: ${{ steps.ver.outputs.tag }}
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}

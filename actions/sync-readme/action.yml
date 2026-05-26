@@ -1,0 +1,37 @@
+name: Sync README to Release Repo
+description: 将指定的 README 源文件同步到发布仓库
+
+inputs:
+  readme_source:
+    description: "README 源文件路径（相对于 workspace）"
+    required: true
+  release_repo_url:
+    description: "发布仓库的 clone URL（不含 token）"
+    required: true
+  tag:
+    description: "当前 tag，用于 commit message"
+    required: true
+  token:
+    description: "发布用的 token"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Sync README to release repo
+      shell: bash
+      run: |
+        set -euo pipefail
+        TOKEN_CLEAN=$(printf '%s' "$TOKEN" | tr -d '\n\r ')
+        REPO_URL="${{ inputs.release_repo_url }}"
+        FULL_URL="${REPO_URL/https:\/\//https://${TOKEN_CLEAN}@}"
+        git clone "$FULL_URL" /tmp/release-repo
+        cd /tmp/release-repo
+        cp "$GITHUB_WORKSPACE/${{ inputs.readme_source }}" README.md
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "Sync README for ${{ inputs.tag }}" || true
+        git push
+      env:
+        TOKEN: ${{ inputs.token }}
