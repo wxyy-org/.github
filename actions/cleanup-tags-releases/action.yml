@@ -1,0 +1,56 @@
+name: Cleanup Old Tags and Releases
+description: 清理私有仓库旧 tag 和公开仓库旧 release/tag，保留最近 N 个
+
+inputs:
+  keep:
+    description: "保留最近的 tag/release 数量"
+    required: true
+  public_repo:
+    description: "公开仓库（owner/repo），留空则跳过公开仓库清理"
+    required: false
+    default: ""
+  token:
+    description: "GitHub token（需要公开仓库的 delete 权限）"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cleanup old tags and releases
+      shell: bash
+      run: |
+        set -euo pipefail
+        KEEP=${{ inputs.keep }}
+        echo "Keeping latest $KEEP tags/releases, removing older ones..."
+
+        # --- Private repo tags ---
+        PRIVATE_TAGS=$(git tag -l | sort -V | tail -n "$KEEP")
+        PRIVATE_ALL=$(git tag -l | sort -V)
+        for tag in $PRIVATE_ALL; do
+          if ! echo "$PRIVATE_TAGS" | grep -qx "$tag"; then
+            echo "Deleting private tag: $tag"
+            git push origin --delete "$tag" 2>/dev/null || echo "  Failed to delete remote tag $tag"
+            git tag -d "$tag" 2>/dev/null || echo "  Local tag $tag already removed"
+          fi
+        done
+
+        # --- Public repo releases & tags ---
+        PUBLIC_REPO="${{ inputs.public_repo }}"
+        if [ -z "$PUBLIC_REPO" ]; then
+          echo "No public repo specified, skipping public cleanup."
+          exit 0
+        fi
+
+        PUBLIC_TAGS=$(gh release list --repo "$PUBLIC_REPO" --json tagName --jq '.[].tagName' | sort -V | tail -n "$KEEP")
+        PUBLIC_ALL=$(gh release list --repo "$PUBLIC_REPO" --json tagName --jq '.[].tagName' | sort -V)
+        for tag in $PUBLIC_ALL; do
+          if ! echo "$PUBLIC_TAGS" | grep -qx "$tag"; then
+            echo "Deleting public release & tag: $tag"
+            gh release delete "$tag" --repo "$PUBLIC_REPO" --yes 2>/dev/null || echo "  Failed to delete release $tag"
+            gh api --method DELETE "repos/$PUBLIC_REPO/git/refs/tags/$tag" 2>/dev/null || echo "  Failed to delete remote tag $tag"
+          fi
+        done
+
+        echo "Cleanup complete. Kept latest $KEEP tags/releases."
+      env:
+        GH_TOKEN: ${{ inputs.token }}

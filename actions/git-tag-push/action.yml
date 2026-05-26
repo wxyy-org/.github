@@ -1,0 +1,19 @@
+name: Git Tag and Push
+description: 创建 tag 并推送到 origin（不 commit）
+
+inputs:
+  tag:
+    description: "要创建的 tag"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Create and push tag
+      shell: bash
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag "${{ inputs.tag }}"
+        git push origin "${{ inputs.tag }}"

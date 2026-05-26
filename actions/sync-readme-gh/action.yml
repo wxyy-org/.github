@@ -1,0 +1,35 @@
+name: Sync README with gh CLI
+description: 使用 gh CLI 将 README 源文件同步到目标仓库
+
+inputs:
+  readme_source:
+    description: "README 源文件路径（相对于 workspace）"
+    required: true
+  target_repo:
+    description: "目标仓库（owner/repo）"
+    required: true
+  tag:
+    description: "当前 tag，用于 commit message"
+    required: true
+  token:
+    description: "GitHub token"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Sync README to target repo
+      shell: bash
+      run: |
+        set -euo pipefail
+        gh auth setup-git
+        gh repo clone "${{ inputs.target_repo }}" /tmp/target-repo
+        cd /tmp/target-repo
+        cp "$GITHUB_WORKSPACE/${{ inputs.readme_source }}" README.md
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "Sync README for ${{ inputs.tag }}" || echo "No changes to commit"
+        git push
+      env:
+        GH_TOKEN: ${{ inputs.token }}
