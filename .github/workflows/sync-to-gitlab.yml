@@ -25,45 +25,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check GitLab is reachable
+      - name: Check GitLab health
         id: gitlab_up
-        run: |
-          set -euo pipefail
-          HEALTH_URL="${GITLAB_HOST%/}/-/health"
-          if curl -fsS --connect-timeout 10 --max-time 20 "$HEALTH_URL" >/dev/null 2>&1; then
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            echo "GitLab responded at $HEALTH_URL — proceeding with sync."
-          else
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=GitLab offline::${GITLAB_HOST} did not respond — sync skipped (workflow succeeds)."
-          fi
-        env:
-          GITLAB_HOST: ${{ inputs.gitlab_host }}
+        uses: wxyy-org/.github/actions/gitlab-health-check@main
+        with:
+          gitlab_host: ${{ inputs.gitlab_host }}
 
       - name: Mirror to GitLab
         if: steps.gitlab_up.outputs.reachable == 'true'
-        run: |
-          TOKEN_CLEAN=$(printf '%s' "$GITLAB_TOKEN" | tr -d '\n\r ' )
-          GITLAB_DOMAIN="${GITLAB_HOST#https://}"
-          git remote add gitlab "https://oauth2:${TOKEN_CLEAN}@${GITLAB_DOMAIN}/${GITLAB_REPO}.git"
-
-          # 获取 GitLab 上现有的分支列表
-          git ls-remote --heads gitlab | cut -f2 | sed 's|refs/heads/||' > /tmp/gitlab_branches.txt
-          # 获取 GitHub 本地分支列表
-          git branch -r | grep -v '\->' | sed 's|origin/||' > /tmp/github_branches.txt
-
-          # 删除 GitLab 上存在但 GitHub 本地不存在的分支
-          comm -23 /tmp/gitlab_branches.txt /tmp/github_branches.txt | while read branch; do
-            git push gitlab --delete "$branch" || true
-          done
-
-          # 推送所有分支和标签
-          git push --force --all gitlab
-          git push --force --tags gitlab
-        env:
-          GITLAB_HOST: ${{ inputs.gitlab_host }}
-          GITLAB_REPO: ${{ inputs.gitlab_repo }}
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        uses: wxyy-org/.github/actions/gitlab-mirror@main
+        with:
+          gitlab_host: ${{ inputs.gitlab_host }}
+          gitlab_repo: ${{ inputs.gitlab_repo }}
+          gitlab_token: ${{ secrets.GITLAB_TOKEN }}
 
       - name: Sync skipped (GitLab offline)
         if: steps.gitlab_up.outputs.reachable != 'true'

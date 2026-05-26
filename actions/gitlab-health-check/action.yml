@@ -1,0 +1,31 @@
+name: GitLab Health Check
+description: 检测 GitLab 实例是否可达
+
+inputs:
+  gitlab_host:
+    description: "GitLab 实例地址（如 https://gitlab.example.com）"
+    required: true
+
+outputs:
+  reachable:
+    description: "'true' 或 'false'"
+    value: ${{ steps.check.outputs.reachable }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check GitLab is reachable
+      id: check
+      shell: bash
+      run: |
+        set -euo pipefail
+        HEALTH_URL="${GITLAB_HOST%/}/-/health"
+        if curl -fsS --connect-timeout 10 --max-time 20 "$HEALTH_URL" >/dev/null 2>&1; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+          echo "GitLab responded at $HEALTH_URL — proceeding."
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+          echo "::notice title=GitLab offline::${GITLAB_HOST} did not respond — skipping."
+        fi
+      env:
+        GITLAB_HOST: ${{ inputs.gitlab_host }}

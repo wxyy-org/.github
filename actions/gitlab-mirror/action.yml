@@ -1,0 +1,40 @@
+name: GitLab Mirror Sync
+description: 将当前仓库全量镜像推送到 GitLab（含裁剪过时分支）
+
+inputs:
+  gitlab_host:
+    description: "GitLab 实例地址（如 https://gitlab.example.com）"
+    required: true
+  gitlab_repo:
+    description: "GitLab 上的 group/repo（不含 .git）"
+    required: true
+  gitlab_token:
+    description: "GitLab OAuth2 Token"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Mirror to GitLab
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        TOKEN_CLEAN=$(printf '%s' "$GITLAB_TOKEN" | tr -d '\n\r ')
+        GITLAB_DOMAIN="${GITLAB_HOST#https://}"
+        git remote add gitlab "https://oauth2:${TOKEN_CLEAN}@${GITLAB_DOMAIN}/${GITLAB_REPO}.git"
+
+        # 裁剪：GitLab 有但 GitHub 没有的分支
+        git ls-remote --heads gitlab | cut -f2 | sed 's|refs/heads/||' > /tmp/gitlab_branches.txt
+        git branch -r | grep -v '\->' | sed 's|origin/||' > /tmp/github_branches.txt
+        comm -23 /tmp/gitlab_branches.txt /tmp/github_branches.txt | while read branch; do
+          git push gitlab --delete "$branch" || true
+        done
+
+        # 全量推送
+        git push --force --all gitlab
+        git push --force --tags gitlab
+      env:
+        GITLAB_HOST: ${{ inputs.gitlab_host }}
+        GITLAB_REPO: ${{ inputs.gitlab_repo }}
+        GITLAB_TOKEN: ${{ inputs.gitlab_token }}
