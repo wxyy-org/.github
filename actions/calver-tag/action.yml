@@ -5,10 +5,14 @@ inputs:
   timezone:
     description: "时区（如 Asia/Shanghai）"
     required: true
+  pad:
+    description: "Tag 序号位数（默认 1，不足补 0）"
+    required: false
+    default: "1"
 
 outputs:
   tag:
-    description: "CalVer 标签，如 2026.05.26.0"
+    description: "CalVer 标签，如 2026.05.26.0 或 2026.05.26.07（取决于 pad）"
     value: ${{ steps.gen.outputs.tag }}
   semver:
     description: "对应 semver，如 2026.5.26-0"
@@ -29,10 +33,12 @@ runs:
         while git rev-parse "${TODAY}.${NEXT}" >/dev/null 2>&1; do
           NEXT=$((NEXT + 1))
         done
-        TAG="${TODAY}.${NEXT}"
+        PADDED=$(printf "%0${PAD}d" "$NEXT")
+        TAG="${TODAY}.${PADDED}"
         SEMVER=$(node -e 'const [y,m,d,n]="'$TAG'".split("."); console.log(`${parseInt(y)}.${parseInt(m)}.${parseInt(d)}-${parseInt(n)}`)')
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
         echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
         echo "✅ $TAG  →  semver $SEMVER"
       env:
         TIMEZONE: ${{ inputs.timezone }}
+        PAD: ${{ inputs.pad }}
